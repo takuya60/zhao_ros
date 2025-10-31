@@ -1,0 +1,77 @@
+<launch>
+    <arg name="arm" default="gen3"/>
+    <arg name="dof" default="7"/>
+    <arg name="vision" default="true"/> <arg name="sim" default="true"/>
+    <arg name="prefix" default=""/>
+    <arg name="robot_name" default="my_gen3"/>
+    <arg name="gripper"    default="robotiq_2f_85" />
+    <arg name="use_sim_time" default="true"/>
+    <param name="/use_sim_time" value="$(arg use_sim_time)"/>
+
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <arg name="paused" value="false"/>
+        <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+        <arg name="gui" value="true"/>
+    </include>
+
+    <param name="$(arg robot_name)/robot_description" command="
+      $(find xacro)/xacro $(find my_control)/urdf/my_gen3_with_camera.xacro 
+      arm:=$(arg arm) 
+      dof:=$(arg dof) 
+      vision:=$(arg vision) 
+      sim:=$(arg sim) 
+      prefix:=$(arg prefix) 
+      gripper:=$(arg gripper)
+      robot_name:=$(arg robot_name)
+    "/>
+
+    <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model"
+          args="-param $(arg robot_name)/robot_description -urdf -model $(arg robot_name) -robot_namespace $(arg robot_name)"
+          output="screen" />
+
+    <param name="$(arg robot_name)/vision" value="$(arg vision)" />
+
+    <group ns="$(arg robot_name)">
+        <rosparam file="$(find kortex_control)/arms/$(arg arm)/$(arg dof)dof/config/joint_position_controllers.yaml" command="load" subst_value="true"/>
+        <rosparam file="$(find kortex_control)/grippers/$(arg gripper)/config/gripper_action_controller_parameters.yaml" command="load" subst_value="true"
+                  unless="$(eval not arg('gripper'))"/>
+
+        <node name="$(arg prefix)$(arg arm)_controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
+              output="screen" args="$(arg prefix)$(arg arm)_joint_trajectory_controller $(arg prefix)joint_state_controller $(arg prefix)$(arg gripper)_gripper_controller"
+              unless="$(eval not arg('gripper'))"/>
+        
+    <node name="$(arg robot_name)_driver" pkg="kortex_driver" type="kortex_arm_driver" output="screen">
+        <param name="sim" value="true"/>
+        <param name="arm" value="$(arg arm)"/>
+        <param name="gripper" value="$(arg gripper)"/>
+        <param name="dof" value="$(arg dof)"/>
+        <param name="robot_name" value="$(arg robot_name)"/>
+
+        <param name="cyclic_data_publish_rate" value="40"/>
+
+        </node>
+
+        <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"
+        respawn="false" output="screen" />
+
+        <include file="$(find kortex_description)/../kortex_move_it_config/$(arg arm)_$(arg gripper)_move_it_config/launch/move_group.launch" unless="$(eval not arg('gripper'))">
+            <arg name="dof" value="$(arg dof)"/>
+            <arg name="prefix" value="$(arg prefix)"/>
+            </include>
+
+        <node name="rviz" pkg="rviz" type="rviz" if="$(eval true)"
+              args="-d $(find my_control)/rviz/my_control.rviz"/> </group>
+    
+    <node name="spawn_aruco_marker" pkg="gazebo_ros" type="spawn_model"
+          args="-file $(find my_control)/models/aruco_marker_582/model.sdf -sdf -model aruco_marker_582 -x 0.4 -y 0.0 -z 0.01"
+          output="screen" 
+          launch-prefix="bash -c 'sleep 10.0; $0 $@' "
+          />
+    <include file="$(find my_control)/launch/aruco.launch">
+        <arg name="robot_name"  value="$(arg robot_name)" />
+        <arg name="camera_name" value="camera" />
+        <arg name="marker_id"   value="582"/>
+        <arg name="marker_size" value="0.035"/>
+    </include>
+
+</launch>

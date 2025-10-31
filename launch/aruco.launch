@@ -1,0 +1,18 @@
+<launch>
+    <arg name="robot_name" default="my_gen3" />
+    <arg name="camera_name" default="camera" /> 
+    <arg name="marker_id"   default="582"/>     
+    <arg name="marker_size" default="0.080"/>   
+    <node pkg="aruco_ros" type="single" name="aruco_single">
+
+        <remap from="/camera_info"   to="/$(arg robot_name)/$(arg camera_name)/color/camera_info" />
+        <remap from="/image"         to="/$(arg robot_name)/$(arg camera_name)/color/image_raw" />
+
+        <param name="reference_frame"    value="$(arg robot_name)/camera_link_sim"/>
+
+        <param name="image_is_rectified" value="true"/>
+        <param name="marker_size"        value="$(arg marker_size)"/>
+        <param name="marker_id"          value="$(arg marker_id)"/>
+    </node>
+
+</launch>

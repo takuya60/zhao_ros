@@ -1,0 +1,15 @@
+# ROS build artifacts
+build/
+devel/
+install/
+log/
+
+# Python artifacts
+*.pyc
+__pycache__/
+
+# IDE/Editor config
+.vscode/
+.idea/
+*.swp
+*~

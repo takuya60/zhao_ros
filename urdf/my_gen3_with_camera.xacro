@@ -1,0 +1,80 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="gen3_robotiq_2f_85">
+
+  <xacro:arg name="arm" default="gen3"/>
+  <xacro:arg name="dof" default="7"/>
+  <xacro:arg name="vision" default="true"/>
+  <xacro:arg name="sim" default="true"/>
+  <xacro:arg name="prefix" default=""/>
+  <xacro:arg name="gripper" default="robotiq_2f_85"/> <xacro:arg name="robot_name" default="my_gen3"/>
+
+  <xacro:property name="arm" value="$(arg arm)"/>
+  <xacro:property name="dof" value="$(arg dof)"/>
+  <xacro:property name="vision" value="$(arg vision)"/>
+  <xacro:property name="sim" value="$(arg sim)"/>
+  <xacro:property name="prefix" value="$(arg prefix)"/>
+  <xacro:property name="gripper" value="$(arg gripper)"/>
+  <xacro:property name="robot_name" value="$(arg robot_name)"/>
+
+  <xacro:if value="${gripper == ''}">
+    <xacro:include filename="$(find kortex_description)/robots/${arm}.xacro"
+                   dof="${dof}"
+                   vision="${vision}"
+                   sim="${sim}"
+                   prefix="${prefix}" />
+  </xacro:if>
+
+  <xacro:unless value="${gripper == ''}">
+    <xacro:include filename="$(find kortex_description)/robots/${arm}_${gripper}.xacro"
+                   dof="${dof}"
+                   vision="${vision}"
+                   sim="${sim}"
+                   prefix="${prefix}" />
+  </xacro:unless>
+
+  <link name="${prefix}camera_link_sim"/>
+
+  <joint name="${prefix}camera_mount_joint" type="fixed">
+    <parent link="${prefix}tool_frame"/>
+    <child link="${prefix}camera_link_sim"/>
+    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/> 
+  </joint>
+
+  <xacro:if value="${sim}">
+    <gazebo reference="${prefix}camera_link_sim">
+      <sensor type="depth" name="realsense_sim">
+        <always_on>true</always_on>
+        <update_rate>30.0</update_rate>
+        <camera>
+          <horizontal_fov>1.047</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+        </camera>
+
+        <plugin name="camera_plugin" filename="libgazebo_ros_openni_kinect.so">
+          <baseline>0.2</baseline>
+          <pointCloudCutoff>0.1</pointCloudCutoff>
+          <pointCloudCutoffMax>5.0</pointCloudCutoffMax>
+
+          <robotNamespace>${robot_name}</robotNamespace>
+          <cameraName>camera</cameraName>
+          <frameName>${prefix}camera_link_sim</frameName>
+
+          <imageTopicName>color/image_raw</imageTopicName>
+          <depthImageTopicName>depth/image_raw</depthImageTopicName>
+          <pointCloudTopicName>depth/points</pointCloudTopicName>
+          <cameraInfoTopicName>color/camera_info</cameraInfoTopicName>
+          <depthImageCameraInfoTopicName>depth/camera_info</depthImageCameraInfoTopicName>
+        </plugin>
+      </sensor>
+    </gazebo>
+  </xacro:if>
+
+</robot>
