@@ -1,0 +1,31 @@
+// ------------------------------------------------------------------
+// Gazebo 材质脚本
+// 文件名: ArucoMarker582.material
+//
+// 作用: 定义一个名为 "ArucoMarker582/Marker" 的新材质。
+// ------------------------------------------------------------------
+
+material ArucoMarker582/Marker
+{
+    technique
+    {
+        pass
+        {
+            // (设置 'ambient' 和 'diffuse' 为 1 1 1 1 
+            //  可以确保它在 Gazebo 的阴影中也保持明亮，
+            //  这有助于 'aruco_ros' 节点的识别)
+            ambient 1 1 1 1
+            diffuse 1 1 1 1
+
+            texture_unit
+            {
+                // 告诉它使用哪个纹理文件
+                // (这个 .png 文件必须在 ../textures/ 文件夹中)
+                texture aruco_marker_582.png
+                
+                // (filtering none 确保像素在近距离时保持清晰，而不是模糊)
+                filtering none
+            }
+        }
+    }
+}
