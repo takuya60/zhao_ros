@@ -1,0 +1,31 @@
+<launch>
+    <arg name="robot_name" default="my_gen3" />
+    <arg name="gripper"    default="robotiq_2f_85" />
+
+    <arg name="robot_ip"   default="192.168.1.10" /> 
+    <!-- driver驱动 -->
+    <include file="$(find kortex_driver)/launch/kortex_driver.launch" >
+        <arg name="robot_name" value="$(arg robot_name)" />
+        <arg name="gripper"    value="$(arg gripper)" />
+        <arg name="robot_ip"   value="$(arg robot_ip)" />
+        <arg name="vision"     value="true" />
+    </include>
+    <!-- moveit -->
+    <include file="$(find kortex_description)/../kortex_move_it_config/$(arg arm)_$(arg gripper)_move_it_config/launch/move_group.launch">
+        <arg name="dof" value="7"/>
+        <arg name="prefix" value=""/>
+        <arg name="use_sim_time" value="false"/> 
+    </include>
+    <!-- rviz -->
+    <node name="rviz" pkg="rviz" type="rviz" required="true"
+          args="-d $(find my_control)/rviz/my_control.rviz" />
+    
+    <!-- aruco包 -->
+    <include file="$(find my_control)/launch/aruco_ros.launch"
+             launch-prefix="bash -c 'sleep 10.0; $0 $@' ">
+        <arg name="robot_name"  value="$(arg robot_name)" />
+        <arg name="camera_name" value="camera" />
+        <arg name="marker_id"   value="582"/>
+        <arg name="marker_size" value="0.035"/>
+    </include>
+</launch>
