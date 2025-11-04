@@ -6,7 +6,8 @@
   <xacro:arg name="vision" default="true"/>
   <xacro:arg name="sim" default="true"/>
   <xacro:arg name="prefix" default=""/>
-  <xacro:arg name="gripper" default="robotiq_2f_85"/> <xacro:arg name="robot_name" default="my_gen3"/>
+  <xacro:arg name="gripper" default="robotiq_2f_85"/>
+  <xacro:arg name="robot_name" default="my_gen3"/>
 
   <xacro:property name="arm" value="$(arg arm)"/>
   <xacro:property name="dof" value="$(arg dof)"/>
@@ -32,16 +33,8 @@
                    prefix="${prefix}" />
   </xacro:unless>
 
-  <link name="${prefix}camera_link_sim"/>
-
-  <joint name="${prefix}camera_mount_joint" type="fixed">
-    <parent link="${prefix}tool_frame"/>
-    <child link="${prefix}camera_link_sim"/>
-    <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/> 
-  </joint>
-
   <xacro:if value="${sim}">
-    <gazebo reference="${prefix}camera_link_sim">
+    <gazebo reference="${prefix}camera_depth_frame">
       <sensor type="depth" name="realsense_sim">
         <always_on>true</always_on>
         <update_rate>30.0</update_rate>
@@ -53,20 +46,20 @@
             <format>R8G8B8</format>
           </image>
           <clip>
-            <near>0.1</near>
-            <far>100</far>
+            <near>0.2</near>
+            <far>8.0</far>
           </clip>
         </camera>
 
         <plugin name="camera_plugin" filename="libgazebo_ros_openni_kinect.so">
           <baseline>0.2</baseline>
           <pointCloudCutoff>0.1</pointCloudCutoff>
-          <pointCloudCutoffMax>5.0</pointCloudCutoffMax>
-
+          <alwaysOn>true</alwaysOn>
           <robotNamespace>${robot_name}</robotNamespace>
           <cameraName>camera</cameraName>
-          <frameName>${prefix}camera_link_sim</frameName>
-
+          <updateRate>10</updateRate>
+          <frameName>camera_depth</frameName>
+          <pointCloudCutoff>0.4</pointCloudCutoff>
           <imageTopicName>color/image_raw</imageTopicName>
           <depthImageTopicName>depth/image_raw</depthImageTopicName>
           <pointCloudTopicName>depth/points</pointCloudTopicName>

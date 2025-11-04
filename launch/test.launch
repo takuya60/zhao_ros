@@ -1,0 +1,15 @@
+<launch>
+    <arg name="robot_name" default="my_gen3" />
+    <arg name="gripper"    default="robotiq_2f_85" /> <arg name="vision"     default="true" /> 
+
+    <arg name="use_sim_time" default="true"/>
+    <param name="/use_sim_time" value="$(arg use_sim_time)"/>
+
+    <include file="$(find kortex_gazebo)/launch/spawn_kortex_robot.launch" >
+        <arg name="robot_name" value="$(arg robot_name)" />
+        <arg name="gripper"    value="$(arg gripper)" />
+        <arg name="vision"     value="$(arg vision)" />
+        <arg name="start_rviz" value="true" /> <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    </include>
+
+</launch>
