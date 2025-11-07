@@ -1,31 +1,52 @@
 <launch>
     <arg name="robot_name" default="my_gen3" />
     <arg name="gripper"    default="robotiq_2f_85" />
+    <arg name="arm"        default="gen3" />
+    <arg name="dof"        default="7" />
+    <arg name="ip_address" default="192.168.1.10" />
+    <arg name="marker_id"  value="582"/>
+    <arg name="marker_size" value="0.035"/>
 
-    <arg name="robot_ip"   default="192.168.1.10" /> 
-    <!-- driver驱动 -->
-    <include file="$(find kortex_driver)/launch/kortex_driver.launch" >
-        <arg name="robot_name" value="$(arg robot_name)" />
-        <arg name="gripper"    value="$(arg gripper)" />
-        <arg name="robot_ip"   value="$(arg robot_ip)" />
-        <arg name="vision"     value="true" />
+    <!-- 1. 驱动（使用完整版 kortex_driver.launch） -->
+    <include file="$(find kortex_driver)/launch/kortex_driver.launch">
+        <arg name="robot_name"   value="$(arg robot_name)" />
+        <arg name="gripper"      value="$(arg gripper)" />
+        <arg name="ip_address"   value="$(arg ip_address)" />
+        <arg name="vision"       value="true" />          <!-- 必须！ -->
+        <arg name="arm"          value="$(arg arm)" />
+        <arg name="dof"          value="$(arg dof)" />    <!-- 必须！ -->
+        <arg name="start_rviz"   value="false" />
+        <arg name="start_moveit" value="false" />
     </include>
-    <!-- moveit -->
-    <include file="$(find kortex_description)/../kortex_move_it_config/$(arg arm)_$(arg gripper)_move_it_config/launch/move_group.launch">
-        <arg name="dof" value="7"/>
-        <arg name="prefix" value=""/>
-        <arg name="use_sim_time" value="false"/> 
-    </include>
-    <!-- rviz -->
+
+    <!-- 2. MoveIt：封装到命名空间 -->
+    <group ns="$(arg robot_name)">
+        <include file="$(find gen3_move_it_config)/launch/move_group.launch">
+            <arg name="dof" value="$(arg dof)" />
+            <arg name="prefix" value="" />                <!-- 关键：不加前缀 -->
+            <arg name="use_hard_limits" value="false" />
+            <arg name="allow_trajectory_execution" value="true"/>
+            <arg name="fake_execution" value="false"/>
+            <arg name="info" value="true"/>
+        </include>
+    </group>
+
+    <!-- 3. 加载手眼标定结果（TF 静态变换） -->
+    <!-- 假设你标定结果保存在 calibration.yaml -->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="eye_to_hand"
+          args="$(argfind my_control)/calibration/handeye_calibration.yaml" />
+
+    <!-- 4. RViz 可视化 -->
     <node name="rviz" pkg="rviz" type="rviz" required="true"
           args="-d $(find my_control)/rviz/my_control.rviz" />
-    
-    <!-- aruco包 -->
+
+    <!-- 5. ArUco 检测（延迟启动） -->
     <include file="$(find my_control)/launch/aruco_ros.launch"
              launch-prefix="bash -c 'sleep 10.0; $0 $@' ">
         <arg name="robot_name"  value="$(arg robot_name)" />
         <arg name="camera_name" value="camera" />
-        <arg name="marker_id"   value="582"/>
-        <arg name="marker_size" value="0.035"/>
+        <arg name="marker_id"   value="$(arg marker_id)"/>
+        <arg name="marker_size" value="$(arg marker_size)"/>
     </include>
+
 </launch>
