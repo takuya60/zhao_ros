@@ -1,109 +1,119 @@
 #!/usr/bin/env python
 import rospy
 import moveit_commander
+import sys
+import tf2_ros
+import tf2_geometry_msgs
 import numpy as np
-from geometry_msgs.msg import PoseStamped, Twist # Twist 可以用于速度控制，这里我们用PoseStamped实现位移控制
-from tf.transformations import euler_from_quaternion
+from geometry_msgs.msg import PoseStamped
 
 class ArucoTrackingDemo:
     def __init__(self):
         rospy.init_node('aruco_tracking_demo')
         
+        # 初始化 TF 
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+
+        # 初始化 MoveIt
+        moveit_commander.roscpp_initialize(sys.argv)
         self.move_group = moveit_commander.MoveGroupCommander("arm")
-        self.move_group.set_planning_time(0.01) # 减小规划时间以提高响应速度
-        self.move_group.set_max_velocity_scaling_factor(0.1) # 降低速度，使控制更稳定
-        self.move_group.set_max_acceleration_scaling_factor(0.1)
         
-        # 跟踪参数
-        self.P_gain = 0.5  # 比例增益，需要根据实际情况调整
-        self.TOLERANCE = 0.03 # 3 cm 容忍度
-        self.MAX_STEP = 0.01 # 每一步最大移动 1 cm
+        # 提高一点速度限制，否则伺服会跟不上
+        self.move_group.set_max_velocity_scaling_factor(0.3) 
+        self.move_group.set_max_acceleration_scaling_factor(0.3)
+        
+        # 参数设置
+        self.tracking_distance = 0.20  # 离二维码保持 20cm
+        self.tolerance = 0.03          # 3cm 容差
+        self.scale_factor = 0.1        # P控制器增益 (系数越小越平滑)
 
-        # 1. 初始回到安全位
-        rospy.loginfo("回到初始位姿...")
-        self.move_group.set_pose_target("home")
+        # 初始化回到初始位置
+        rospy.loginfo("回到 Home 点...")
+        self.move_group.set_named_target("home")
         self.move_group.go(wait=True)
-        
-        # 2. 订阅 ArUco 位姿
-        # 在视觉伺服中，通常保持订阅不取消
-        self.aruco_sub = rospy.Subscriber('/aruco_single/pose', PoseStamped, self.track_aruco)
-        rospy.loginfo("开始视觉跟踪，等待 ArUco 位姿消息...")
 
+        # 订阅 ArUco
+        # 队列长度设为1，只关心最新的位置，不处理旧的
+        self.aruco_sub = rospy.Subscriber('/aruco_single/pose', PoseStamped, self.track_callback, queue_size=1)
+        
+        rospy.loginfo("等待 ArUco 信号")
 
-    def track_aruco(self, pose_msg):
-        # 目标位姿 (即 ArUco 标记的位姿)
-        target_pose = pose_msg.pose
-        
-        # 获取当前末端执行器位姿
-        current_pose_stamped = self.move_group.get_current_pose()
-        current_pose = current_pose_stamped.pose
+    def track_callback(self, msg):
+        """
+        1. 收到 ArUco 在相机坐标系下的位置
+        2. 将其转化为 Base Link 坐标系下的位置
+        3. 计算末端应该去哪里
+        """
+        try:
+            # 把相对相机的坐标 转换成 相对基座的坐标
+            transform = self.tf_buffer.lookup_transform("base_link", 
+                                                      msg.header.frame_id, #  camera_color_optical_frame
+                                                      rospy.Time(0), 
+                                                      rospy.Duration(1.0))
+            
+            target_pose_in_base = tf2_geometry_msgs.do_transform_pose(msg, transform)
 
-        # ------------------- 1. 计算笛卡尔空间误差 -------------------
-        
-        # 计算位置误差 (目标 - 当前)
-        error_x = target_pose.position.x - current_pose.position.x
-        error_y = target_pose.position.y - current_pose.position.y
-        error_z = target_pose.position.z - current_pose.position.z
-        
-        linear_error = np.sqrt(error_x**2 + error_y**2 + error_z**2)
-        
-        # 检查是否已对齐
-        if linear_error < self.TOLERANCE:
-            rospy.loginfo(f"对齐完成，误差小于 {self.TOLERANCE} m.")
-            # 停止 MoveIt! 运动
-            self.move_group.stop() 
-            # 如果是单次对齐，可以在这里取消订阅 self.aruco_sub.unregister()
-            return
+            # 获取当前状态
+            current_pose = self.move_group.get_current_pose().pose
 
-        # ------------------- 2. P 控制器计算位移增量 -------------------
+            # 计算误差
+            dx = target_pose_in_base.pose.position.x - current_pose.position.x
+            dy = target_pose_in_base.pose.position.y - current_pose.position.y
+            dz = target_pose_in_base.pose.position.z - current_pose.position.z
+            # 计算直线距离
+            distance = np.sqrt(dx**2 + dy**2 + dz**2)
+            
+            # 
+            if distance < self.tolerance:
+                return
 
-        # 使用 P 控制器计算下一时刻需要的位移增量 (delta_pose)
-        delta_x = self.P_gain * error_x
-        delta_y = self.P_gain * error_z # 注意！ArUco 标记的 Z 轴通常是垂直于平面指向机械臂的，可能需要调整映射
-        delta_z = self.P_gain * error_y # ArUco 的 X/Y/Z 可能与机械臂的 X/Y/Z 存在交叉映射
+            # ---------------------------------------------------------
+            # 步骤 4: 生成控制指令
+            # ---------------------------------------------------------
+            # 我们不直接去目标点（因为会撞上），我们每次只走一小步（P控制）
+            # 这里的逻辑是：当前位置 + (误差向量 * 比例系数)
+            
+            # 重点：这里我们假设要飞到二维码面前，而不是完全贴合
+            # 实际应用中，通常需要根据二维码的法向量来计算“悬停点”。
+            # 为了代码简单，这里我们仅仅让机械臂向二维码“靠近”
+            
+            step_x = dx * self.scale_factor
+            step_y = dy * self.scale_factor
+            step_z = dz * self.scale_factor
+            
+            # 限制最大步长 (安全钳位)
+            max_step = 0.02 # 每次最多动 2cm
+            step_x = np.clip(step_x, -max_step, max_step)
+            step_y = np.clip(step_y, -max_step, max_step)
+            step_z = np.clip(step_z, -max_step, max_step)
 
-        # 确保每一步的位移增量不超过最大限制，防止机械臂运动过快
-        delta_x = np.clip(delta_x, -self.MAX_STEP, self.MAX_STEP)
-        delta_y = np.clip(delta_y, -self.MAX_STEP, self.MAX_STEP)
-        delta_z = np.clip(delta_z, -self.MAX_STEP, self.MAX_STEP)
-        
-        # ------------------- 3. 规划并执行微小位移 -------------------
-        
-        # 计算新的目标位姿：当前位姿 + 位移增量
-        next_pose = PoseStamped()
-        next_pose.header.frame_id = current_pose_stamped.header.frame_id
-        
-        # 仅移动位置，保持方向不变（通常对齐只需要位置调整）
-        next_pose.pose.position.x = current_pose.position.x + delta_x
-        next_pose.pose.position.y = current_pose.position.y + delta_y
-        next_pose.pose.position.z = current_pose.position.z + delta_z
-        next_pose.pose.orientation = current_pose.orientation # 保持当前末端的方向
-        
-        # MoveIt! 规划并执行
-        self.move_group.set_pose_target(next_pose)
-        
-        # 使用 execute 而不是 go(wait=True) 可以更快的响应下一个回调
-        plan = self.move_group.plan()
-        if plan[0]:
-            self.move_group.execute(plan[1], wait=False) # wait=False 允许在执行过程中接收新的反馈
-            rospy.loginfo(f"执行微小移动: dx={delta_x:.4f}, dy={delta_y:.4f}, dz={delta_z:.4f}。当前误差: {linear_error:.4f} m.")
-        else:
-            rospy.logwarn("MoveIt! 规划失败，无法执行微小移动。")
+            # 构建新的目标位姿
+            next_pose = current_pose
+            next_pose.position.x += step_x
+            next_pose.position.y += step_y
+            next_pose.position.z += step_z
+            
+            # 执行运动 (使用笛卡尔路径，比 set_pose_target 更快更稳)
+            waypoints = [next_pose]
+            #使用cartesian路径，沿直线运动，如果直接moveit.go会不按直线走
+            (plan, fraction) = self.move_group.compute_cartesian_path(
+                                waypoints,   # waypoints to follow
+                                0.01,        # eef_step (1cm 插值)
+                                0.0)         # jump_threshold
+            
+            if fraction > 0.9: # 如果规划成功
+                # 异步执行，不阻塞回调
+                self.move_group.execute(plan, wait=False)
+            else:
+                rospy.logwarn("规划路径失败")
 
-    # def get_predefined_pose(self, name):
-    #     # 预定义位姿（需要一个有效的 Pose 对象）
-    #     if name == "home":
-    #         pose = PoseStamped()
-    #         pose.header.frame_id = "my_gen3/base_link" 
-    #         pose.pose.position.x = 0.5
-    #         pose.pose.position.y = 0.0
-    #         pose.pose.position.z = 0.5
-    #         pose.pose.orientation.w = 1.0 
-    #         return pose.pose
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+            rospy.logwarn("TF 变换失败")
 
 if __name__ == '__main__':
     try:
-        demo = ArucoTrackingDemo()
+        ArucoTrackingDemo()
         rospy.spin()
     except rospy.ROSInterruptException:
         pass

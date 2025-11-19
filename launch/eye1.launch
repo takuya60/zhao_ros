@@ -10,7 +10,7 @@
         <arg name="ip_address"   value="$(arg ip_address)" />
         <arg name="dof"          value="$(arg dof)" />
         <arg name="start_moveit" value="false" /> 
-        <arg name="vision"       value="false" /> 
+        <arg name="vision"       value="true" /> 
         <arg name="start_rviz"   value="false" /> 
     </include>
 
@@ -31,10 +31,23 @@
         </include>
     </group>
 
-    <node pkg="tf" type="static_transform_publisher" name="camera_mount_tf" args="
+    <node pkg="aruco_ros" type="single" name="aruco_single">
+        <remap from="/camera_info" to="camera/color/camera_info" />
+        <remap from="/image"       to="camera/color/image_raw" />
+        
+        <param name="marker_id"          value="582"/>
+        <param name="marker_size"        value="0.08"/>
+        
+        <param name="marker_frame"       value="aruco_marker_582" />
+        <param name="reference_frame"    value="$(arg robot_name)/camera_color_optical_frame"/>
+        <param name="camera_frame"       value="$(arg robot_name)/camera_color_optical_frame"/>
+        <param name="marker_is_inverted" value="true"/>
+    </node>
+
+    <!-- <node pkg="tf" type="static_transform_publisher" name="camera_mount_tf" args="
         0.02 0 0.10   0 1.57 0  
         end_effector_link  
         $(arg robot_name)/camera_link  
         100
-    "/>
+    "/> -->
 </launch>

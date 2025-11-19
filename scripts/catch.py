@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 import rospy
 import moveit_commander
+import tf2_geometry_msgs
+import tf2_ros
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import String
 from kortex_driver.srv import PlayCartesianTrajectory
@@ -8,9 +10,14 @@ from kortex_driver.srv import PlayCartesianTrajectory
 class PickPlaceDemo:
     def __init__(self):
         rospy.init_node('pick_place_demo')
+        
+        self.tf_buffer=tf2_ros.Buffer()
+        self.tf_lisener=tf2_ros.TransformListener(self.tf_buffer)
+
         self.move_group = moveit_commander.MoveGroupCommander("arm")
-        self.move_group.set_pose_target("home")  # 回家位
+        self.move_group.set_pose_target("home")
         self.move_group.go(wait=True)
+
         self.aruco_sub = None
         # 订阅 ArUco 位姿
         self.sub=rospy.Subscriber('/aruco_single/pose', PoseStamped, self.detect_and_pick)
@@ -22,6 +29,7 @@ class PickPlaceDemo:
         self.aruco_sub = None
         # 1. 检测到物体，计算抓取位姿
         pick_pose = PoseStamped()
+        transform=self.tf_buffer.lookup_transform("base_link",pose_msg.header.frame_id,rospy.Time(0),rospy.Duration(1))
         pick_pose.header.frame_id = "my_gen3/base_link"
         pick_pose.pose = pose_msg.pose  # ArUco 位姿
         pick_pose.pose.position.z += 0.05  # 抬高 5cm 抓取
