@@ -1,16 +1,16 @@
 <launch>
-    <arg name="robot_name" default="my_gen3" />
-    <arg name="gripper"    default="" /> 
-    <arg name="vision"     default="true" />
+    <arg name="robot_name" default="gen3" />
+    <arg name="gripper"    default="robotiq_2f_85" /> 
+    <arg name="vision"     default="false" />
     <arg name="ip_address" default="192.168.1.10" /> 
     <arg name="arm"        default="gen3" />
     <arg name="dof"        default="7"/>
     <arg name="prefix"     default=""/>
     <arg name="use_hard_limits"        default="false"/>
     <arg name="marker_id"  value="582"/>
-    <arg name="marker_size" value="0.035"/>
+    <arg name="marker_size" value="0.08"/>
 
-    <!-- 1. 启动驱动（文件2）—— 关闭 RViz，避免冲突 -->
+    <!-- 1. 启动驱动 -->
     <include file="$(find kortex_driver)/launch/kortex_driver.launch" >
         <arg name="robot_name"   value="$(arg robot_name)" />
         <arg name="gripper"      value="$(arg gripper)" />
@@ -18,13 +18,24 @@
         <arg name="vision"       value="$(arg vision)" />
         <arg name="arm"          value="$(arg arm)" />
         <arg name="dof"          value="$(arg dof)" />
-        <arg name="start_rviz"   value="false" />   <!-- 关闭 -->
+        <arg name="start_rviz"   value="false" /> 
         <arg name="start_moveit" value="false" />
     </include>
-    <!-- 不加命名空间，会使moveit找不到机器人 -->
+    <!-- camera -->
+<group ns="$(arg robot_name)">
+    <include file="$(find realsense2_camera)/launch/rs_camera.launch">
+        <arg name="enable_color" value="true"/>
+        <arg name="enable_depth" value="true"/>
+        <arg name="align_depth" value="true"/>
+        <arg name="camera" value="camera"/>
+        <arg name="tf_prefix"   value="$(arg robot_name)"/>
+    </include>
+</group>
+
+    <!-- 不加命名空间,会使moveit找不到机器人 -->
  <group ns="$(arg robot_name)">
         <!-- 2. 启动 MoveIt -->
-        <include file="$(find gen3_move_it_config)/launch/move_group.launch">
+        <include file="$(find gen3_robotiq_2f_85_move_it_config)/launch/move_group.launch">
             <arg name="allow_trajectory_execution" value="true"/>
             <arg name="fake_execution" value="false"/>
             <arg name="info" value="true"/>
@@ -33,19 +44,29 @@
             <arg name="prefix" value="$(arg prefix)"/>
         </include>
   </group>
+
+    <!-- tf -->
+    <node pkg="tf" type="static_transform_publisher" name="camera_mount_tf" args="
+        0.02 0 0.10   0 1.57 0  
+        end_effector_link  
+        $(arg robot_name)/camera_link  
+        100
+    "/>
+
+
     <!-- 3. 启动手眼标定 —— 打开专用 RViz -->
     <include file="$(find easy_handeye)/launch/calibrate.launch">
         <arg name="eye_on_hand" value="true" />
         <arg name="freehand_robot_movement" value="false" />
         <arg name="move_group_namespace"    value="/$(arg robot_name)" /> 
         <arg name="move_group"              value="arm" />
-        <arg name="robot_base_frame"        value="$(arg robot_name)/base_link" />
-        <arg name="robot_effector_frame"    value="$(arg robot_name)/end_effector_link" /> 
-        <!-- 这里把traking设置为color相机 -->
-        <arg name="tracking_base_frame"     value="$(arg robot_name)/camera_color_frame" /> 
+        <arg name="robot_base_frame"        value="base_link" />
+        <arg name="robot_effector_frame"    value="end_effector_link" /> 
+        <!-- traking设置为color相机 -->
+        <arg name="tracking_base_frame"     value="$(arg robot_name)/camera_color_optical_frame" /> 
         <arg name="tracking_marker_frame"   value="aruco_marker_$(arg marker_id)" /> 
 
-        <arg name="start_rviz"         value="true" />   <!-- 标定专用 RViz -->
-        <arg name="start_sampling_gui" value="true" />   <!-- 采样按钮 -->
+        <arg name="start_rviz"         value="true" />
+        <arg name="start_sampling_gui" value="true" />
     </include>
 </launch>

@@ -1,0 +1,40 @@
+<launch>
+    <arg name="robot_name" default="gen3" />
+    <arg name="gripper"    default="robotiq_2f_85" /> 
+    <arg name="ip_address" default="192.168.1.10" /> 
+    <arg name="dof"        default="7"/>
+    
+    <include file="$(find kortex_driver)/launch/kortex_driver.launch" >
+        <arg name="robot_name"   value="$(arg robot_name)" />
+        <arg name="gripper"      value="$(arg gripper)" />
+        <arg name="ip_address"   value="$(arg ip_address)" />
+        <arg name="dof"          value="$(arg dof)" />
+        <arg name="start_moveit" value="false" /> 
+        <arg name="vision"       value="false" /> 
+        <arg name="start_rviz"   value="false" /> 
+    </include>
+
+    <group ns="$(arg robot_name)">
+        <include file="$(find realsense2_camera)/launch/rs_camera.launch">
+            <arg name="enable_color" value="true"/>
+            <arg name="enable_depth" value="true"/>
+            <arg name="align_depth" value="true"/>
+            <arg name="camera"      value="camera"/>
+            <arg name="tf_prefix"   value="$(arg robot_name)"/>
+         </include>
+
+        <include file="$(find gen3_robotiq_2f_85_move_it_config)/launch/move_group.launch">
+            <arg name="allow_trajectory_execution" value="true"/>
+            <arg name="fake_execution" value="false"/>
+            <arg name="info" value="true"/>
+            <arg name="dof" value="$(arg dof)"/>
+        </include>
+    </group>
+
+    <node pkg="tf" type="static_transform_publisher" name="camera_mount_tf" args="
+        0.02 0 0.10   0 1.57 0  
+        end_effector_link  
+        $(arg robot_name)/camera_link  
+        100
+    "/>
+</launch>
